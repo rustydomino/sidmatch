@@ -13,7 +13,7 @@ to save common or unique SIDs to output files.
 - SIDs are normalized (leading '00' stripped).
 - Null/malformed rows are logged to error.log.
 - User is prompted before overwriting output files.
-- Bash tab-completion is enabled for file path inputs.
+- Bash-style tab-completion is enabled for file path inputs.
 - First 4 rows of each input file are displayed in aligned table format.
 - All yes/no prompts now require explicit 'y' or 'n' input.
 - Column prompts use 1-based numbering for user convenience.
@@ -23,25 +23,58 @@ import csv
 import os
 import re
 import sys
-import glob
 import readline
 
 VALID_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.pdf'}
 
-def complete_path(text, state):
-    return (glob.glob(text + '*') + [None])[state]
+# -------- Bash-style tab-completion --------
 
-def input_with_autocomplete(prompt_text):
-    readline.set_completer(complete_path)
+def path_completer(text, state):
+    """
+    Bash-style tab completion for files and directories, including nested paths and filenames.
+    """
+    text = os.path.expanduser(os.path.expandvars(text))
+
+    if os.path.sep not in text:
+        search_dir = '.'
+        prefix = text
+    else:
+        search_dir, prefix = os.path.split(text)
+        if not search_dir:
+            search_dir = '.'
+
+    try:
+        entries = os.listdir(search_dir)
+    except Exception:
+        entries = []
+
+    matches = []
+    for entry in entries:
+        if entry.startswith(prefix):
+            full_path = os.path.join(search_dir, entry)
+            display = os.path.join(search_dir, entry)
+            if os.path.isdir(full_path):
+                display += '/'
+            matches.append(display)
+
+    matches.sort()
+    return matches[state] if state < len(matches) else None
+
+def input_with_path_completion(prompt_text):
+    readline.set_completer_delims(' \t\n')  # allow slashes
+    readline.set_completer(path_completer)
     readline.parse_and_bind("tab: complete")
     try:
         return input(prompt_text)
     finally:
         readline.set_completer(None)
 
+# -------- Prompt utilities --------
+
 def prompt_file(prompt_text):
     while True:
-        path = input_with_autocomplete(prompt_text).strip()
+        path = input_with_path_completion(prompt_text).strip()
+        path = os.path.expanduser(os.path.expandvars(path))
         if os.path.isfile(path):
             return path
         print("File not found. Please try again.")
@@ -52,7 +85,7 @@ def prompt_column(prompt_text):
         if col_input.isdigit():
             n = int(col_input)
             if n >= 0:
-                return n - 1 if n > 0 else -1  # -1 means "none"
+                return n - 1 if n > 0 else -1
         print("Please enter a whole number: 1 for first column, 2 for second, etc., or 0 for none.")
 
 def prompt_yes_no(prompt_text):
@@ -80,9 +113,10 @@ def looks_like_valid_filename(value):
 
 def prompt_output_filename(default_name):
     while True:
-        name = input_with_autocomplete(f"Enter output filename (default: {default_name}): ").strip()
+        name = input_with_path_completion(f"Enter output filename (default: {default_name}): ").strip()
         if not name:
             name = default_name
+        name = os.path.expanduser(os.path.expandvars(name))
         if os.path.exists(name):
             if not prompt_yes_no(f"File '{name}' exists. Overwrite?"):
                 continue
@@ -94,6 +128,8 @@ def write_sid_list(sid_set, output_file):
         for sid in sorted(sid_set):
             writer.writerow([sid])
     print(f"Wrote {len(sid_set)} SIDs to {output_file}")
+
+# -------- SID extraction --------
 
 def extract_sids_from_csv(path, file_label):
     print(f"\n--- Previewing first 4 rows of {file_label} ---")
@@ -198,10 +234,11 @@ def extract_sids_from_csv(path, file_label):
                 return sids, total_lines
         print("That column doesn't appear to contain valid SID-containing filenames. Please try again.")
 
+# -------- Main logic --------
+
 def main():
     file1 = prompt_file("Enter path to first CSV file: ")
     sids1, total1 = extract_sids_from_csv(file1, "FILE1")
-
     if total1 == 0:
         sys.exit(1)
 
