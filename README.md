@@ -6,4 +6,4 @@ Features:
 - SID can be standlone in a column, or be embedded in another string (e,g., a filename extracted to a cell in the csv).
 - Prompts user to check if there is a header row, which will be ignored if it exists.
 - Supports bash-styled autocomplete when prompting for filenames. 
-
+- this is a trivial project but using it learn things, such as how to use github, etc. 
